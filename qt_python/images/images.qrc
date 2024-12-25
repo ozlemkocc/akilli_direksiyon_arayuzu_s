@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="nnew">
+    <file>dogru_direksiyon.png</file>
+  </qresource>
+</RCC>
