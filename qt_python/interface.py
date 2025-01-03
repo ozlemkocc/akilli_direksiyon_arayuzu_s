@@ -74,11 +74,30 @@ class Ui_MainWindow(object):
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+        
+        self.temperature_label = QtWidgets.QLabel(self.frame_2)
+        self.temperature_label.setFont(QtGui.QFont("Arial", 16))
+        self.temperature_label.setStyleSheet("color: white;")
+        self.temperature_label.setText("Sıcaklık: Bekleniyor...")
+        self.verticalLayout_3.addWidget(self.temperature_label)
+
+        self.heart_rate_label = QtWidgets.QLabel(self.frame_2)
+        self.heart_rate_label.setFont(QtGui.QFont("Arial", 16))
+        self.heart_rate_label.setStyleSheet("color: white;")
+        self.heart_rate_label.setText("Nabız: Bekleniyor...")
+        self.verticalLayout_3.addWidget(self.heart_rate_label)
+
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
         self.label.setText(_translate("MainWindow", "LÜTFEN ELLERİNİZİ DOĞRU KONUMA KOYUNUZ"))
+
+    def update_warning_message(self, message: str):
+        """Uyarı mesajını güncelleyen fonksiyon"""
+        self.label.setText(message)
+    
+ 
 import images_rc
 
 
