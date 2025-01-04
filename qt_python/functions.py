@@ -13,41 +13,16 @@ import pyttsx3
 import random
 import json
 import time
+import struct
+
 
 class WorkerThread(QThread):
-    resultReady = pyqtSignal(int)  # Ayrıştırılmış veriyi iletmek için sinyal
+    resultReady = pyqtSignal(list)  # Ayrıştırılmış veriyi iletmek için sinyal
     def __init__(self):
         super().__init__()
         self.is_running = True  # Thread'in çalışmasını kontrol eden bayrak
         self.ser = serial.Serial('/dev/ttyUSB0', 115200)
-    #def run(self):
-    #    print("Simülasyon modu aktif. Test verileri gönderiliyor.")
-    #    while self.is_running:
-    #        try:
-                # Simüle edilmiş veriler oluştur
-    #            fake_data = {
-    #                "temperature": round(random.uniform(35.0, 39.0), 1),  # Rastgele sıcaklık
-    #                "heart_rate": random.randint(60, 120)  # Rastgele nabız
-    #            }
-    #            print(f"Simüle edilen veri: {fake_data}")
-    #            self.resultReady.emit(fake_data)  # Veriyi sinyal ile gönder
-    #            time.sleep(1)  # 1 saniye bekle
-    #        except Exception as e:
-    #            print(f"Simülasyon sırasında hata: {e}")
 
-    #def stop(self):
-    #    self.is_running = False  # Döngüyü durdur
-    #    print("Simülasyon durduruldu.")
-    # def __init__(self):
-    #     super().__init__()
-    #     try:
-    #         self.ser = serial.Serial('/dev/ttyUSB0', 115200,timeout=1)  # Seri port ayarı
-    #     except serial.SerialException as e:
-    #         print(f"Seri port hatası: {e}")
-    #         self.ser = None
-    #     self.is_running = True
-
-     
     def run(self):
         if self.ser is None:
             print("Seri port açılmadı, veri okumaya başlanamaz.")
@@ -56,34 +31,14 @@ class WorkerThread(QThread):
         while self.is_running:
             try:
                 while True:
-                    data = self.ser.readline() # Satır bazında veri okuyun
-                    decoded_data = data.decode('utf-8').split('\n')[0].strip()
-                    print(f"Alınan veri: {decoded_data}")
-                    #parsed_data = self.parse_data(data)  # Veriyi ayrıştır
-                    #if parsed_data:  # Ayrıştırma başarılıysa sinyal gönder
-                    self.resultReady.emit(decoded_data)
+                    data = self.ser.read(9) 
+                    unpacked = list(struct.unpack('<ffB', data))
+                    self.resultReady.emit(unpacked)
             except Exception as e:
                 print(f"Veri okuma hatası: {e}")
             finally:
                 if not self.is_running:
                     print("WorkerThread döngüsü sonlandırıldı.")
-            
-     
-
-
-    def parse_data(self, data: bytes):
-        """Ham veriyi ayrıştırır ve bir float değer döndürür."""
-        try:
-            # Gelen bytes veriyi string'e çevir ve strip ile boşlukları temizle
-            decoded_data = data.decode('utf-8').strip()
-            # String veriyi float'a dönüştür
-            value = float(decoded_data)
-            return {'value': value}  # Sözlük formatında döndür
-        except (ValueError, UnicodeDecodeError) as e:
-            print(f"Veri ayrıştırma hatası: {e}, Gelen veri: {data}")
-            return None  # Ayrıştırma başarısızsa None döndür
-
-
 
     def stop(self):
         self.is_running = False  # Döngüyü durdurmak için bayrağı güncelle
@@ -105,13 +60,37 @@ class MainWindow(QMainWindow):
         self.worker_thread = WorkerThread()
         self.worker_thread.resultReady.connect(self.control)
         self.worker_thread.start()
+        self.temperature = 0
+        self.BPM = 0
+        self.cursorpos = 0
+        self.figure = plt.Figure(figsize=(5, 3), dpi=100)
+        self.canvas = FigureCanvas(self.figure)
+
+        layout = QVBoxLayout(self.ui.nabz_widget)
+        layout.addWidget(self.canvas)
+
+        
+        self.x_data = [] 
+        self.y_data = [] 
+
+        # Grafik çizim fonksiyonunu çağır
+        self.ax = self.figure.add_subplot(111)
+        self.ax.set_title('Gerçek Zamanlı Veri Grafiği')
+        self.ax.set_xlabel('Zaman (s)')
+        self.ax.set_ylabel('Veri Değeri')
+        self.ax.grid(True)
+
+        # Timer ile verileri güncelle
+        self.pulse_timer = QTimer(self)
+        self.pulse_timer.timeout.connect(self.update_graph)
+        self.pulse_timer.start(100)  # Her saniye veriyi güncelle
 
     def toggle_background(self):
         # Arka plan rengini kırmızıya değiştir veya temizle
         if self.is_red:
-            self.ui.warning_widget.setStyleSheet("background-color: none;")
+            self.ui.warnin_widget.setStyleSheet("background-color: none;")
         else:
-            self.ui.warning_widget.setStyleSheet("background-color: red;")
+            self.ui.warnin_widget.setStyleSheet("background-color: red;")
         self.is_red = not self.is_red
 
     def speak_warning(self, message):
@@ -122,15 +101,39 @@ class MainWindow(QMainWindow):
     def control(self, data):
         print(f"Alınan veri: {data}")  # Gelen veriyi kontrol et
         try:
-            temperature = float(data)  # Veriyi float'a dönüştür
-            print(f"Dönüştürülen sıcaklık: {temperature}")  # Dönüştürülen veriyi yazdır
-            self.ui.temperature_label.setText(f"Sıcaklık: {temperature:.1f} °C")
-            if temperature > 38.0:
-                self.ui.update_warning_message("Ateş Yüksek!")
-                self.speak_warning("Ateş yüksek!")
+            self.temperature = data[1] 
+            self.BPM = data[2]
+             # Veriyi float'a dönüştür
+            print(self.temperature)  # Dönüştürülen veriyi yazdır
+            self.ui.temperature_label.setText(f"Sıcaklık: {self.temperature:.1f} °C")
+            if self.temperature > 38.0:
+                print("Ateş yüksek!")
         except ValueError:
             print(f"Geçersiz veri alındı: {data}")  # Eğer float'a dönüştürülemezse hata yazdır
 
+    def update_graph(self):
+        self.cursorpos += 1
+        self.x_data.append(self.cursorpos * 1)  # Zaman: artan sayılar
+        self.y_data.append(self.BPM)  # Yeni veri değeri
+
+        # Grafiği güncelle
+        self.ax.clear()  # Önceki grafiği temizle
+        self.line, = self.ax.plot(self.x_data, self.y_data, label='Kalp atışı', color='r')
+        self.line.set_xdata(self.x_data)
+        self.line.set_ydata(self.y_data)
+        self.ax.set_title('Kalp atış hızı')
+        self.ax.set_xlabel('Zaman (s)')
+        self.ax.set_ylabel('Kalp Atışı')
+        self.ax.legend()
+
+        # Çizimi güncelle
+        self.canvas.draw()
+        if self.cursorpos == 20:
+            self.x_data = []
+            self.y_data = []
+            self.cursorPos = 0
+            self.line.remove()
+            self.line = None
 
     def closeEvent(self, event):
         # Uygulama kapatılırken thread'i durdur
